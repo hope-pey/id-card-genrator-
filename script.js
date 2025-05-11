@@ -21,7 +21,6 @@ function handleExcelUpload(event) {
                 const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 excelData = XLSX.utils.sheet_to_json(firstSheet);
-                // Remap data using real headers from the third row
                 const headerRow = excelData.find(row => Object.values(row).includes('NOM & PRENOM'));
                 if (headerRow) {
                     const headers = Object.values(headerRow);
@@ -106,7 +105,6 @@ function updateGenerateButton() {
     }
 }
 
-// Helper to add leading zero if not present
 function withLeadingZero(num) {
     if (!num) return '';
     num = String(num).trim();
@@ -117,39 +115,39 @@ function createIDCard(student, index) {
     const card = document.createElement('div');
     card.className = 'id-card';
 
-    // Header
+ 
     const header = document.createElement('div');
     header.className = 'id-card-header';
 
-    // Logo
     const logo = document.createElement('img');
     logo.className = 'id-card-logo';
     logo.src = uploadedLogoBase64 || LOGO_BASE64;
     logo.alt = 'Logo';
     header.appendChild(logo);
 
-    // ID badge
     const idBadge = document.createElement('div');
     idBadge.className = 'id-card-id';
     idBadge.textContent = String(student['ADHERENT'] || '');
     header.appendChild(idBadge);
 
     card.appendChild(header);
-
-    // Photo wrapper (flexbox)
     const photoWrapper = document.createElement('div');
     photoWrapper.className = 'id-card-photo-wrapper';
-    // Student photo by ID or fallback to type
+    
+
     const id = String(student['ADHERENT'] || '').trim().toLowerCase();
-    let photoSrc = images.get(id) || '';
+    const type = String(student['type'] || student['TYPE'] || '').trim().toLowerCase();
+    
+
+    let photoSrc = images.get(id);
     if (!photoSrc) {
-        let type = (student['type'] || student['TYPE'] || '').toString().trim().toLowerCase();
-        if (type === 'f' && defaultFemaleImage) {
+        if (type === 'f') {
             photoSrc = defaultFemaleImage;
-        } else if (type === 'm' && defaultMaleImage) {
+        } else if (type === 'm') {
             photoSrc = defaultMaleImage;
         }
     }
+
     if (photoSrc) {
         const photo = document.createElement('img');
         photo.className = 'id-card-photo';
@@ -159,18 +157,15 @@ function createIDCard(student, index) {
     }
     card.appendChild(photoWrapper);
 
-    // Card content
     const content = document.createElement('div');
     content.className = 'id-card-content';
 
-    // Full Name with numbering (with leading zero)
     const cardNumber = (index + 1).toString().padStart(2, '0');
     const name = document.createElement('div');
     name.className = 'id-card-name';
     name.textContent = `${cardNumber}. ${String(student['NOM & PRENOM'] || '')}`;
     content.appendChild(name);
 
-    // TEL ADH
     const telAdh = document.createElement('div');
     telAdh.className = 'id-card-info-row';
     telAdh.innerHTML = `
@@ -179,7 +174,6 @@ function createIDCard(student, index) {
     `;
     content.appendChild(telAdh);
 
-    // TEL PARENT
     const telParent = document.createElement('div');
     telParent.className = 'id-card-info-row';
     telParent.innerHTML = `
@@ -188,7 +182,7 @@ function createIDCard(student, index) {
     `;
     content.appendChild(telParent);
 
-    // LYCEE
+
     const lycee = document.createElement('div');
     lycee.className = 'id-card-info-row';
     lycee.innerHTML = `
@@ -215,17 +209,59 @@ async function generatePDF() {
     console.log('Starting PDF generation...');
     console.log('Excel data:', excelData);
     console.log('Images loaded:', images.size);
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'pdf-modal-overlay';
+    modalOverlay.style.position = 'fixed';
+    modalOverlay.style.top = '0';
+    modalOverlay.style.left = '0';
+    modalOverlay.style.width = '100%';
+    modalOverlay.style.height = '100%';
+    modalOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    modalOverlay.style.display = 'flex';
+    modalOverlay.style.justifyContent = 'center';
+    modalOverlay.style.alignItems = 'center';
+    modalOverlay.style.zIndex = '9999';
 
-    // Show loading indicator
-    const loading = document.createElement('div');
-    loading.textContent = 'Generating PDF, please wait...';
-    loading.style.textAlign = 'center';
-    loading.style.padding = '20px';
-    loading.style.fontSize = '16px';
-    loading.style.color = '#1a73e8';
-    document.body.appendChild(loading);
+    const modalContent = document.createElement('div');
+    modalContent.id = 'pdf-modal';
+    modalContent.style.backgroundColor = 'white';
+    modalContent.style.padding = '2rem';
+    modalContent.style.borderRadius = '8px';
+    modalContent.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.1)';
+    modalContent.style.textAlign = 'center';
+    modalContent.style.maxWidth = '90%';
+    modalContent.style.width = 'auto';
 
-    // Filter out empty rows
+    const loadingText = document.createElement('div');
+    loadingText.textContent = 'Generating PDF, please wait...';
+    loadingText.style.fontSize = '1.2rem';
+    loadingText.style.color = '#1a73e8';
+    loadingText.style.marginBottom = '1rem';
+
+    const spinner = document.createElement('div');
+    spinner.style.border = '4px solid #f3f3f3';
+    spinner.style.borderTop = '4px solid #1a73e8';
+    spinner.style.borderRadius = '50%';
+    spinner.style.width = '40px';
+    spinner.style.height = '40px';
+    spinner.style.animation = 'spin 1s linear infinite';
+    spinner.style.margin = '0 auto';
+
+
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    modalContent.appendChild(loadingText);
+    modalContent.appendChild(spinner);
+    modalOverlay.appendChild(modalContent);
+    document.body.appendChild(modalOverlay);
+
     const filteredData = excelData.filter(student =>
         student['NOM & PRENOM'] ||
         student['TEL ADH'] ||
@@ -236,10 +272,9 @@ async function generatePDF() {
 
     console.log('Filtered data:', filteredData.length, 'cards');
 
-    // Show total cards
     document.getElementById('cardCount').textContent = `Total cards generated: ${filteredData.length}`;
 
-    // Create preview
+ 
     const preview = document.getElementById('preview');
     preview.innerHTML = '';
     preview.style.overflowX = 'auto';
@@ -255,7 +290,6 @@ async function generatePDF() {
     container.style.padding = '10px';
     preview.appendChild(container);
 
-    // Create all cards first
     const cards = filteredData.map((student, index) => {
         const card = createIDCard(student, index);
         container.appendChild(card);
@@ -264,7 +298,7 @@ async function generatePDF() {
 
     console.log('Created', cards.length, 'preview cards');
 
-    // Wait for all images to load
+
     const imagePromises = Array.from(container.getElementsByTagName('img')).map(img => {
         return new Promise((resolve) => {
             if (img.complete) {
@@ -280,28 +314,25 @@ async function generatePDF() {
     });
 
     try {
-        // Wait for all images to load
+
         await Promise.all(imagePromises);
         console.log('All preview images loaded');
 
-        // Create PDF
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('portrait', 'mm', 'a4');
         const cardsPerPage = 8;
-        const cardWidth = 97; // mm
-        const cardHeight = 65; // mm
-        const marginX = 2; // mm
-        const marginY = 4; // mm
-        const pageMarginX = 7; // mm
-        const pageMarginY = 7; // mm
+        const cardWidth = 97; 
+        const cardHeight = 65; 
+        const marginX = 2; 
+        const marginY = 4; 
+        const pageMarginX = 7; 
+        const pageMarginY = 7; 
 
         let currentRow = 0;
         let currentCol = 0;
         let pageCount = 0;
 
-        // Render each card to canvas and add to PDF
         for (let i = 0; i < cards.length; i++) {
-            // Add new page if needed
             if (i > 0 && i % cardsPerPage === 0) {
                 pdf.addPage();
                 pageCount++;
@@ -310,8 +341,6 @@ async function generatePDF() {
             }
             const x = pageMarginX + (currentCol * (cardWidth + marginX));
             const y = pageMarginY + (currentRow * (cardHeight + marginY));
-
-            // Render card to canvas
             const canvas = await html2canvas(cards[i], {
                 scale: 3,
                 useCORS: true,
@@ -327,16 +356,14 @@ async function generatePDF() {
                 currentCol++;
             }
         }
-
-        // Remove loading indicator
-        document.body.removeChild(loading);
-
-        // Save the PDF
+        document.body.removeChild(modalOverlay);
+        document.head.removeChild(style);
         pdf.save('id_cards.pdf');
         console.log('PDF saved successfully');
     } catch (error) {
         console.error('Error generating PDF:', error);
         alert('An error occurred while generating the PDF. Please check console for details.');
-        document.body.removeChild(loading);
+        document.body.removeChild(modalOverlay);
+        document.head.removeChild(style);
     }
-}
+} 
